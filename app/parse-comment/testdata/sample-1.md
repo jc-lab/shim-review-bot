@@ -1,0 +1,1 @@
+/review-bot https://github.com/jc-lab/shim-review-bot/tree/master/sample-repo

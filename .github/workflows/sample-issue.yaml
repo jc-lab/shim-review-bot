@@ -26,6 +26,7 @@ jobs:
           vendor-cert: ${{ inputs.vendor-cert }}
           report-output: ${{ inputs.report-output }}
 
+
 # ISSUE MESSAGE FORMAT
 # ==================================================
 # /review-bot SOURCE

@@ -14,6 +14,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"io"
 	"log"
 	"os"
@@ -64,14 +65,14 @@ type WorkingContext struct {
 }
 
 func Main(flagSet *flag.FlagSet, args []string) {
-	var commentFile string
+	var configFile string
 	var buildCommand string
 	var outputFile string
 	var reportFile string
 	var vendorCert string
 	var sbat string
 
-	flagSet.StringVar(&commentFile, "comment-file", "", "issue comment file")
+	flagSet.StringVar(&configFile, "config", "", "config file")
 
 	flagSet.StringVar(&buildCommand, "build-script", "", "build-script file")
 	flagSet.StringVar(&outputFile, "output-file", "", "docker output file (tar)")
@@ -84,6 +85,37 @@ func Main(flagSet *flag.FlagSet, args []string) {
 	var workingContext WorkingContext
 	var sbatRaw []byte
 	var tempDir string
+
+	if configFile != "" {
+		raw, err := os.ReadFile(configFile)
+		if err != nil {
+			err = fmt.Errorf("config file read failed: %v", err)
+			log.Println(err)
+			workingContext.otherErr = err
+			goto done
+		}
+
+		var config Config
+		if err = yaml.Unmarshal(raw, &config); err != nil {
+			err = fmt.Errorf("config file parse failed: %v", err)
+			log.Println(err)
+			workingContext.otherErr = err
+			goto done
+		}
+
+		if config.BuildScript != "" {
+			buildCommand = config.BuildScript
+		}
+		if config.OutputFile != "" {
+			outputFile = config.OutputFile
+		}
+		if config.VendorCert != "" {
+			vendorCert = config.VendorCert
+		}
+		if config.Sbat != "" {
+			sbat = config.Sbat
+		}
+	}
 
 	workingContext.vendorCert, workingContext.otherErr = os.ReadFile(vendorCert)
 	if workingContext.otherErr != nil {
@@ -310,114 +342,121 @@ func (w *WorkingContext) extractFiles(tarFile string, outputDirectory string) er
 }
 
 func (w *WorkingContext) buildReport() string {
-	report := ""
-	success := true
+	var report = ""
+	var success = true
 
 	if w.buildErr != nil {
+		success = false
 		report += "## BUILD ERROR\n\n"
 		report += "```\n"
 		report += w.buildErr.Error()
 		report += "\n```\n"
+		goto done
 	}
 	if w.otherErr != nil {
+		success = false
 		report += "## REVIEW ERROR\n\n"
 		report += "```\n"
 		report += w.otherErr.Error()
 		report += "\n```\n"
+		goto done
 	}
 
-	// ==================== VENDOR CERTIFICATE ====================
-	report += "## vendor certificate\n\n"
-	cert, err := x509.ParseCertificate(w.vendorCert)
-	if err != nil {
-		success = false
-		report += "ERROR: " + err.Error() + "\n"
-	} else {
-		encoded := pem.EncodeToMemory(&pem.Block{
-			Type:  "CERTIFICATE",
-			Bytes: w.vendorCert,
-		})
-		report += "PEM: \n```\n" + string(encoded) + "\n```\n\n"
-		report += "- Issuer : " + cert.Issuer.String() + "\n"
-		report += "- Subject : " + cert.Subject.String() + "\n"
-		report += "- NotAfter : " + cert.NotAfter.String() + "\n"
-		if (cert.KeyUsage & x509.KeyUsageDigitalSignature) != 0 {
-			report += "- [X] KeyUsage/DigitalSignature : OK\n"
-		} else {
+	if true {
+		// ==================== VENDOR CERTIFICATE ====================
+		report += "## vendor certificate\n\n"
+		cert, err := x509.ParseCertificate(w.vendorCert)
+		if err != nil {
 			success = false
-			report += "- [ ] KeyUsage/DigitalSignature : **NO DigitalSignature in Key Usage!!!**\n"
-		}
-		hasExtKeyUsageCodeSigning := false
-		for _, usage := range cert.ExtKeyUsage {
-			if usage == x509.ExtKeyUsageCodeSigning {
-				hasExtKeyUsageCodeSigning = true
-			}
-		}
-		if hasExtKeyUsageCodeSigning {
-			report += "- [X] ExtKeyUsage/CodeSigning : OK\n"
+			report += "ERROR: " + err.Error() + "\n"
 		} else {
-			success = false
-			report += "- [ ] ExtKeyUsage/CodeSigning : **NO DigitalSignature in Key Usage!!!**\n"
-		}
-	}
-	report += "\n"
-
-	// ==================== SBAT ====================
-	report += "## SBAT\n\n"
-	report += "```\n" + w.sbat + "\n```\n\n"
-	sbatReader := csv.NewReader(strings.NewReader(w.sbat))
-	records, err := sbatReader.ReadAll()
-	_ = records
-	if err == nil {
-		report += "- CSV Format Check : OK (Caution: Check only csv format, not sbat format)\n"
-	} else {
-		success = false
-		report += "- CSV Format Check : **FAILED**: " + err.Error() + "\n"
-	}
-	report += "\n"
-
-	// ==================== EFI FILES ====================
-	for _, file := range w.efiFiles {
-		report += fmt.Sprintf("## EFI FILE: %s\n\n", filepath.Base(file.Name))
-		if file.Hash == file.ComputedHash {
-			report += fmt.Sprintf("- hash (sha256) : %s\n", file.Hash)
-		} else {
-			success = false
-			report += fmt.Sprintf("- hash : %s (INCORRECT)\n", file.Hash)
-			report += fmt.Sprintf("- computed hash (sha256) : %s\n", file.ComputedHash)
-		}
-		if file.Sbat == w.sbat {
-			report += "- [X] sbat : SAME\n"
-		} else {
-			success = false
-			report += "- [ ] sbat : **DIFFERENT!!!**\n"
-			report += "```\n" + file.Sbat + "\n```\n"
-		}
-
-		if len(file.VendorCert) == 0 {
-			success = false
-			report += "- **VENDOR CERT IS EMPTY!!!**\n"
-		} else {
-			efiVendorCert := file.VendorCert
-			if len(efiVendorCert) > len(w.vendorCert) {
-				efiVendorCert = efiVendorCert[:len(w.vendorCert)]
-			}
-			if bytes.Equal(w.vendorCert, efiVendorCert) {
-				report += "- [X] vendor_cert : SAME\n"
+			encoded := pem.EncodeToMemory(&pem.Block{
+				Type:  "CERTIFICATE",
+				Bytes: w.vendorCert,
+			})
+			report += "PEM: \n```\n" + string(encoded) + "\n```\n\n"
+			report += "- Issuer : " + cert.Issuer.String() + "\n"
+			report += "- Subject : " + cert.Subject.String() + "\n"
+			report += "- NotAfter : " + cert.NotAfter.String() + "\n"
+			if (cert.KeyUsage & x509.KeyUsageDigitalSignature) != 0 {
+				report += "- [X] KeyUsage/DigitalSignature : OK\n"
 			} else {
 				success = false
-				report += "- [ ] vendor_cert : **DIFFERENT!!!**\n"
-
-				encoded := pem.EncodeToMemory(&pem.Block{
-					Type:  "CERTIFICATE",
-					Bytes: efiVendorCert,
-				})
-				report += "PEM: \n```\n" + string(encoded) + "\n```\n"
+				report += "- [ ] KeyUsage/DigitalSignature : **NO DigitalSignature in Key Usage!!!**\n"
+			}
+			hasExtKeyUsageCodeSigning := false
+			for _, usage := range cert.ExtKeyUsage {
+				if usage == x509.ExtKeyUsageCodeSigning {
+					hasExtKeyUsageCodeSigning = true
+				}
+			}
+			if hasExtKeyUsageCodeSigning {
+				report += "- [X] ExtKeyUsage/CodeSigning : OK\n"
+			} else {
+				success = false
+				report += "- [ ] ExtKeyUsage/CodeSigning : **NO DigitalSignature in Key Usage!!!**\n"
 			}
 		}
 		report += "\n"
+
+		// ==================== SBAT ====================
+		report += "## SBAT\n\n"
+		report += "```\n" + w.sbat + "\n```\n\n"
+		sbatReader := csv.NewReader(strings.NewReader(w.sbat))
+		records, err := sbatReader.ReadAll()
+		_ = records
+		if err == nil {
+			report += "- CSV Format Check : OK (Caution: Check only csv format, not sbat format)\n"
+		} else {
+			success = false
+			report += "- CSV Format Check : **FAILED**: " + err.Error() + "\n"
+		}
+		report += "\n"
+
+		// ==================== EFI FILES ====================
+		for _, file := range w.efiFiles {
+			report += fmt.Sprintf("## EFI FILE: %s\n\n", filepath.Base(file.Name))
+			if file.Hash == file.ComputedHash {
+				report += fmt.Sprintf("- hash (sha256) : %s\n", file.Hash)
+			} else {
+				success = false
+				report += fmt.Sprintf("- hash : %s (INCORRECT)\n", file.Hash)
+				report += fmt.Sprintf("- computed hash (sha256) : %s\n", file.ComputedHash)
+			}
+			if file.Sbat == w.sbat {
+				report += "- [X] sbat : SAME\n"
+			} else {
+				success = false
+				report += "- [ ] sbat : **DIFFERENT!!!**\n"
+				report += "```\n" + file.Sbat + "\n```\n"
+			}
+
+			if len(file.VendorCert) == 0 {
+				success = false
+				report += "- **VENDOR CERT IS EMPTY!!!**\n"
+			} else {
+				efiVendorCert := file.VendorCert
+				if len(efiVendorCert) > len(w.vendorCert) {
+					efiVendorCert = efiVendorCert[:len(w.vendorCert)]
+				}
+				if bytes.Equal(w.vendorCert, efiVendorCert) {
+					report += "- [X] vendor_cert : SAME\n"
+				} else {
+					success = false
+					report += "- [ ] vendor_cert : **DIFFERENT!!!**\n"
+
+					encoded := pem.EncodeToMemory(&pem.Block{
+						Type:  "CERTIFICATE",
+						Bytes: efiVendorCert,
+					})
+					report += "PEM: \n```\n" + string(encoded) + "\n```\n"
+				}
+			}
+			report += "\n"
+		}
 	}
 
+done:
 	// ==================== RESULT ====================
 	report += "\n"
 	if success {

@@ -4,6 +4,10 @@ inputs:
   comment-file:
     description: 'comment body file'
     required: false
+  config-file:
+    description: 'config file'
+    required: false
+    default: "/tmp/config.yaml"
   issue-repository:
     description: 'issue repository'
     required: false
@@ -32,16 +36,26 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: setup-buildx
-      uses: docker/setup-buildx-action@v3
     - run: |
         echo "${{ github.action_path }}" >> $GITHUB_PATH
         chmod +x ${{ github.action_path }}/shim-review-bot
       shell: bash
+    - name: parse-comment
+      if: inputs.comment-file != ''
+      shell: bash
+      run: |
+        shim-review-bot parse-comment --config "${{ inputs.config-file }}" --comment-file "${{ inputs.comment-file }}"
+        cat "${{ inputs.config-file }}"
+    - name: setup-buildx
+      uses: docker/setup-buildx-action@v3
     - id: clone
       shell: bash
       run: |
-        shim-review-bot download --source "${{ inputs.source }}" --dest "/tmp/source" > /tmp/working-directory.txt
+        if [ -f "${{ inputs.config-file }}" ]; then
+          shim-review-bot download --config "${{ inputs.config-file }}" --source "${{ inputs.source }}" --dest "/tmp/source" > /tmp/working-directory.txt
+        else
+          shim-review-bot download --source "${{ inputs.source }}" --dest "/tmp/source" > /tmp/working-directory.txt
+        fi
     - id: review
       shell: bash
       run: |
@@ -55,7 +69,11 @@ runs:
         echo "WORKING DIRECTORY: $PWD"
         ls -al
         echo ""
-        shim-review-bot review --comment-file "${{ inputs.comment-file }}" --build-script "${BUILD_SCRIPT}" --output-file "${BUILD_OUTPUT_FILE}" --sbat "${SBAT_FILE}" --vendor-cert "${VENDOR_CERT}" --report-output "/tmp/report-generated.md"
+        if [ -f "${{ inputs.config-file }}" ]; then
+          shim-review-bot review --config "${{ inputs.config-file }}" --build-script "${BUILD_SCRIPT}" --output-file "${BUILD_OUTPUT_FILE}" --sbat "${SBAT_FILE}" --vendor-cert "${VENDOR_CERT}" --report-output "/tmp/report-generated.md"
+        else
+          shim-review-bot review --build-script "${BUILD_SCRIPT}" --output-file "${BUILD_OUTPUT_FILE}" --sbat "${SBAT_FILE}" --vendor-cert "${VENDOR_CERT}" --report-output "/tmp/report-generated.md"
+        fi
         echo "**Disclaimer: I am not a not an authorized reviewer. Automatic reproduction check bot (https://github.com/jc-lab/shim-review-bot).**" > ${REPORT_OUTPUT}
         echo "" >> ${REPORT_OUTPUT}
         echo "Job URL : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> ${REPORT_OUTPUT}
