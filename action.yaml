@@ -44,6 +44,9 @@ runs:
         [ -n "${{ inputs.vendor-cert }}" ] && export VENDOR_CERT="${{ inputs.vendor-cert }}" || export VENDOR_CERT="vendor_cert.der"
         [ -n "${{ inputs.report-output }}" ] && export REPORT_OUTPUT="${{ inputs.report-output }}" || export REPORT_OUTPUT="/tmp/report.md"
         cd $(cat /tmp/working-directory.txt)
+        echo "WORKING DIRECTORY: $PWD"
+        ls -al
+        echo ""
         shim-review-bot review --build-script "${BUILD_SCRIPT}" --output-file "${BUILD_OUTPUT_FILE}" --vendor-cert "${VENDOR_CERT}" --report-output "${REPORT_OUTPUT}"
     - id: comment
       if: inputs.issue-number != ''

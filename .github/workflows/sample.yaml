@@ -12,7 +12,7 @@ on:
       source:
         description: "source git repository"
         required: true
-        default: "https://github.com/jc-lab/shim-review-bot/tree/master/sample-reop"
+        default: "https://github.com/jc-lab/shim-review-bot/tree/master/sample-repo"
       build-script:
         description: 'build script'
         required: false
