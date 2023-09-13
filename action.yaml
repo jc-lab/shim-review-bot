@@ -40,6 +40,16 @@ runs:
         echo "${{ github.action_path }}" >> $GITHUB_PATH
         chmod +x ${{ github.action_path }}/shim-review-bot
       shell: bash
+    - name: Create Comment
+      id: comment
+      if: inputs.issue-number != ''
+      uses: peter-evans/create-or-update-comment@v3.0.2
+      with:
+        issue-number: "${{ inputs.issue-number }}"
+        body: |
+          **Disclaimer: I am not a not an authorized reviewer. Automatic reproduction check bot (https://github.com/jc-lab/shim-review-bot).**
+          Job URL : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
     - name: parse-comment
       if: inputs.comment-file != ''
       shell: bash
@@ -74,14 +84,19 @@ runs:
         else
           shim-review-bot review --build-script "${BUILD_SCRIPT}" --output-file "${BUILD_OUTPUT_FILE}" --sbat "${SBAT_FILE}" --vendor-cert "${VENDOR_CERT}" --report-output "/tmp/report-generated.md"
         fi
-        echo "**Disclaimer: I am not a not an authorized reviewer. Automatic reproduction check bot (https://github.com/jc-lab/shim-review-bot).**" > ${REPORT_OUTPUT}
-        echo "" >> ${REPORT_OUTPUT}
-        echo "Job URL : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> ${REPORT_OUTPUT}
-        echo "" >> ${REPORT_OUTPUT}
-        cat /tmp/report-generated.md >> ${REPORT_OUTPUT}
-    - id: comment
+        cat /tmp/report-generated.md > ${REPORT_OUTPUT}
+    - id: report
       if: inputs.issue-number != ''
       uses: peter-evans/create-or-update-comment@v3.0.2
       with:
-        issue-number: "${{ inputs.issue-number }}"
+        comment-id: "${{ steps.comment.outputs.comment-id }}"
+        edit-mode: append
         body-path: "${{ env.REPORT_OUTPUT }}"
+    - name: Failed report
+      if: failure()
+      uses: peter-evans/create-or-update-comment@v3.0.2
+      with:
+        comment-id: "${{ steps.comment.outputs.comment-id }}"
+        edit-mode: append
+        body: |
+          Action failed

@@ -364,7 +364,7 @@ func (w *WorkingContext) buildReport() string {
 
 	if true {
 		// ==================== VENDOR CERTIFICATE ====================
-		report += "## vendor certificate\n\n"
+		report += "## Vendor Certificate\n\n"
 		cert, err := x509.ParseCertificate(w.vendorCert)
 		if err != nil {
 			success = false
@@ -374,7 +374,7 @@ func (w *WorkingContext) buildReport() string {
 				Type:  "CERTIFICATE",
 				Bytes: w.vendorCert,
 			})
-			report += "PEM: \n```\n" + string(encoded) + "\n```\n\n"
+			report += "```\n" + string(encoded) + "\n```\n"
 			report += "- Issuer : " + cert.Issuer.String() + "\n"
 			report += "- Subject : " + cert.Subject.String() + "\n"
 			report += "- NotAfter : " + cert.NotAfter.String() + "\n"
@@ -449,7 +449,7 @@ func (w *WorkingContext) buildReport() string {
 						Type:  "CERTIFICATE",
 						Bytes: efiVendorCert,
 					})
-					report += "PEM: \n```\n" + string(encoded) + "\n```\n"
+					report += "```\n" + string(encoded) + "\n```\n"
 				}
 			}
 			report += "\n"
@@ -460,9 +460,9 @@ done:
 	// ==================== RESULT ====================
 	report += "\n"
 	if success {
-		report += "**SUCCESS**"
+		report += "## SUCCESS"
 	} else {
-		report += "**FAILED**"
+		report += "## FAILED"
 	}
 
 	return report
