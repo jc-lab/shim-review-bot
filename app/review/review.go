@@ -283,6 +283,8 @@ func (w *WorkingContext) extractFiles(tarFile string, outputDirectory string) er
 func (w *WorkingContext) buildReport() string {
 	report := ""
 
+	report += "**Disclaimer: I am not a not an authorized reviewer. Automatic reproduction check bot (https://github.com/jc-lab/shim-review-bot).**\n\n"
+
 	if w.buildErr != nil {
 		report += "## BUILD ERROR\n"
 		report += "```\n"
