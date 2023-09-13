@@ -6,8 +6,10 @@ import (
 	"bytes"
 	"crypto"
 	_ "crypto/sha256"
+	"crypto/x509"
 	"debug/pe"
 	"encoding/hex"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"io"
@@ -286,17 +288,49 @@ func (w *WorkingContext) buildReport() string {
 	report += "**Disclaimer: I am not a not an authorized reviewer. Automatic reproduction check bot (https://github.com/jc-lab/shim-review-bot).**\n\n"
 
 	if w.buildErr != nil {
-		report += "## BUILD ERROR\n"
+		report += "## BUILD ERROR\n\n"
 		report += "```\n"
 		report += w.buildErr.Error()
 		report += "\n```\n"
 	}
 	if w.otherErr != nil {
-		report += "## REVIEW ERROR\n"
+		report += "## REVIEW ERROR\n\n"
 		report += "```\n"
 		report += w.otherErr.Error()
 		report += "\n```\n"
 	}
+
+	report += "## vendor certificate\n\n"
+	cert, err := x509.ParseCertificate(w.vendorCert)
+	if err != nil {
+		report += "ERROR: " + err.Error() + "\n"
+	} else {
+		encoded := pem.EncodeToMemory(&pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: w.vendorCert,
+		})
+		report += "PEM: \n```\n" + string(encoded) + "\n```\n"
+		report += "- Issuer : " + cert.Issuer.String() + "\n"
+		report += "- Subject : " + cert.Subject.String() + "\n"
+		report += "- NotAfter : " + cert.NotAfter.String() + "\n"
+		if (cert.KeyUsage & x509.KeyUsageDigitalSignature) != 0 {
+			report += "- [X] KeyUsage/DigitalSignature : OK"
+		} else {
+			report += "- [ ] KeyUsage/DigitalSignature : **NO DigitalSignature in Key Usage!!!**"
+		}
+		hasExtKeyUsageCodeSigning := false
+		for _, usage := range cert.ExtKeyUsage {
+			if usage == x509.ExtKeyUsageCodeSigning {
+				hasExtKeyUsageCodeSigning = true
+			}
+		}
+		if hasExtKeyUsageCodeSigning {
+			report += "- [X] ExtKeyUsage/CodeSigning : OK"
+		} else {
+			report += "- [ ] ExtKeyUsage/CodeSigning : **NO DigitalSignature in Key Usage!!!**"
+		}
+	}
+	report += "\n"
 
 	for _, file := range w.efiFiles {
 		report += fmt.Sprintf("## EFI FILE: %s\n\n", filepath.Base(file.Name))
@@ -324,6 +358,13 @@ func (w *WorkingContext) buildReport() string {
 				report += "- VENDOR CERT OK\n"
 			} else {
 				report += "- **VENDOR CERT DIFFERENT!!!**\n"
+				report += "PEM : \n"
+
+				encoded := pem.EncodeToMemory(&pem.Block{
+					Type:  "CERTIFICATE",
+					Bytes: w.vendorCert,
+				})
+				report += "PEM: \n```\n" + string(encoded) + "\n```\n"
 			}
 		}
 		report += "\n"
