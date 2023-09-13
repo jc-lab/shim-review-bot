@@ -57,7 +57,7 @@ func CommentParse(input string) (*ParsedComment, error) {
 		}
 	}
 
-	if err := yaml.Unmarshal([]byte(argsYaml), result); err != nil {
+	if err := yaml.Unmarshal([]byte(argsYaml), &result.Config); err != nil {
 		return nil, err
 	}
 
