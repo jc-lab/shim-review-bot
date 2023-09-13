@@ -1,0 +1,3 @@
+sbat,1,SBAT Version,sbat,1,https://github.com/rhboot/shim/blob/main/SBAT.md
+shim,3,UEFI shim,shim,1,https://github.com/rhboot/shim
+shim.test,1,Test,shim,15.7,https://github.com/rhboot/shim
