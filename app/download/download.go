@@ -36,7 +36,7 @@ func Main(flagSet *flag.FlagSet, args []string) {
 			log.Fatalln(err)
 		}
 
-		print(dest + "/" + matches[3])
+		os.Stdout.WriteString(dest + "/" + matches[3])
 	} else {
 		log.Printf("invalid url: %s", source)
 		os.Exit(1)
