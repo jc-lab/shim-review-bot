@@ -8,6 +8,7 @@ import (
 	_ "crypto/sha256"
 	"crypto/x509"
 	"debug/pe"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/pem"
 	"flag"
@@ -39,15 +40,17 @@ type ExportedFile struct {
 }
 
 type EfiFile struct {
-	Name         string
-	Hash         string
-	ComputedHash string
-	Sbat         string
-	VendorCert   []byte
+	Name               string
+	Hash               string
+	ComputedHash       string
+	Sbat               string
+	VendorCert         []byte
+	VendorDeAuthorized []byte
 }
 
 type WorkingContext struct {
 	vendorCert []byte
+	sbat       string
 
 	outputState   outputState
 	hashes        []*HashSum
@@ -64,15 +67,18 @@ func Main(flagSet *flag.FlagSet, args []string) {
 	var outputFile string
 	var reportFile string
 	var vendorCert string
+	var sbat string
 
 	flagSet.StringVar(&buildCommand, "build-script", "", "build-script file")
 	flagSet.StringVar(&outputFile, "output-file", "", "docker output file (tar)")
-	flagSet.StringVar(&vendorCert, "vendor-cert", "", "vendor cert der file")
+	flagSet.StringVar(&vendorCert, "vendor-cert", "vendor_cert.der", "vendor cert der file")
+	flagSet.StringVar(&sbat, "sbat", "sbat.csv", "vendor cert der file")
 
 	flagSet.StringVar(&reportFile, "report-output", "", "report output file")
 	flagSet.Parse(args)
 
 	var workingContext WorkingContext
+	var sbatRaw []byte
 	var tempDir string
 
 	workingContext.vendorCert, workingContext.otherErr = os.ReadFile(vendorCert)
@@ -80,6 +86,13 @@ func Main(flagSet *flag.FlagSet, args []string) {
 		log.Printf("vendor_cert open failed: %v", workingContext.otherErr)
 		goto done
 	}
+
+	sbatRaw, workingContext.otherErr = os.ReadFile(sbat)
+	if workingContext.otherErr != nil {
+		log.Printf("sbat.csv open failed: %v", workingContext.otherErr)
+		goto done
+	}
+	workingContext.sbat = string(sbatRaw)
 
 	workingContext.buildErr = workingContext.build(buildCommand)
 	if workingContext.buildErr != nil {
@@ -137,13 +150,23 @@ func Main(flagSet *flag.FlagSet, args []string) {
 				efiFile.Sbat = string(raw)
 			}
 		}
-		vendorCert := peFile.Section(".vendor_cert")
-		if vendorCert != nil {
-			raw, err := sbat.Data()
+		certTableSection := peFile.Section(".vendor_cert")
+		if certTableSection != nil {
+			raw, err := certTableSection.Data()
 			if err != nil {
-				log.Printf("sbat read failed: %v", err)
+				log.Printf("vendor_cert read failed: %v", err)
 			} else {
-				efiFile.VendorCert = raw
+				vendorAuthorizedSize := binary.LittleEndian.Uint32(raw[0:4])
+				vendorDeAuthorizedSize := binary.LittleEndian.Uint32(raw[4:8])
+				vendorAuthorizedOffset := binary.LittleEndian.Uint32(raw[8:12])
+				vendorDeAuthorizedOffset := binary.LittleEndian.Uint32(raw[12:16])
+
+				vendorAuthorized := raw[vendorAuthorizedOffset : vendorAuthorizedOffset+vendorAuthorizedSize]
+				efiFile.VendorCert = vendorAuthorized
+				if vendorDeAuthorizedSize > 0 {
+					vendorDeAuthorized := raw[vendorAuthorizedOffset : vendorDeAuthorizedOffset+vendorDeAuthorizedSize]
+					efiFile.VendorDeAuthorized = vendorDeAuthorized
+				}
 			}
 		}
 
@@ -284,6 +307,7 @@ func (w *WorkingContext) extractFiles(tarFile string, outputDirectory string) er
 
 func (w *WorkingContext) buildReport() string {
 	report := ""
+	success := true
 
 	if w.buildErr != nil {
 		report += "## BUILD ERROR\n\n"
@@ -301,20 +325,22 @@ func (w *WorkingContext) buildReport() string {
 	report += "## vendor certificate\n\n"
 	cert, err := x509.ParseCertificate(w.vendorCert)
 	if err != nil {
+		success = false
 		report += "ERROR: " + err.Error() + "\n"
 	} else {
 		encoded := pem.EncodeToMemory(&pem.Block{
 			Type:  "CERTIFICATE",
 			Bytes: w.vendorCert,
 		})
-		report += "PEM: \n```\n" + string(encoded) + "\n```\n"
+		report += "PEM: \n```\n" + string(encoded) + "\n```\n\n"
 		report += "- Issuer : " + cert.Issuer.String() + "\n"
 		report += "- Subject : " + cert.Subject.String() + "\n"
 		report += "- NotAfter : " + cert.NotAfter.String() + "\n"
 		if (cert.KeyUsage & x509.KeyUsageDigitalSignature) != 0 {
-			report += "- [X] KeyUsage/DigitalSignature : OK"
+			report += "- [X] KeyUsage/DigitalSignature : OK\n"
 		} else {
-			report += "- [ ] KeyUsage/DigitalSignature : **NO DigitalSignature in Key Usage!!!**"
+			success = false
+			report += "- [ ] KeyUsage/DigitalSignature : **NO DigitalSignature in Key Usage!!!**\n"
 		}
 		hasExtKeyUsageCodeSigning := false
 		for _, usage := range cert.ExtKeyUsage {
@@ -323,9 +349,10 @@ func (w *WorkingContext) buildReport() string {
 			}
 		}
 		if hasExtKeyUsageCodeSigning {
-			report += "- [X] ExtKeyUsage/CodeSigning : OK"
+			report += "- [X] ExtKeyUsage/CodeSigning : OK\n"
 		} else {
-			report += "- [ ] ExtKeyUsage/CodeSigning : **NO DigitalSignature in Key Usage!!!**"
+			success = false
+			report += "- [ ] ExtKeyUsage/CodeSigning : **NO DigitalSignature in Key Usage!!!**\n"
 		}
 	}
 	report += "\n"
@@ -335,17 +362,20 @@ func (w *WorkingContext) buildReport() string {
 		if file.Hash == file.ComputedHash {
 			report += fmt.Sprintf("- hash (sha256) : %s\n", file.Hash)
 		} else {
+			success = false
 			report += fmt.Sprintf("- hash : %s (INCORRECT)\n", file.Hash)
 			report += fmt.Sprintf("- computed hash (sha256) : %s\n", file.ComputedHash)
 		}
-		report += "\n"
-		report += "SBAT:\n"
-		report += "```\n"
-		report += file.Sbat
-		report += "\n```\n"
-		report += "\n"
+		if file.Sbat == w.sbat {
+			report += "- [X] sbat : SAME\n"
+		} else {
+			success = false
+			report += "- [ ] sbat : **DIFFERENT!!!**\n"
+			report += "```\n" + file.Sbat + "\n```\n"
+		}
 
 		if len(file.VendorCert) == 0 {
+			success = false
 			report += "- **VENDOR CERT IS EMPTY!!!**\n"
 		} else {
 			efiVendorCert := file.VendorCert
@@ -353,20 +383,28 @@ func (w *WorkingContext) buildReport() string {
 				efiVendorCert = efiVendorCert[:len(w.vendorCert)]
 			}
 			if bytes.Equal(w.vendorCert, efiVendorCert) {
-				report += "- VENDOR CERT OK\n"
+				report += "- [X] vendor_cert : SAME\n"
 			} else {
-				report += "- **VENDOR CERT DIFFERENT!!!**\n"
-				report += "PEM : \n"
+				success = false
+				report += "- [ ] vendor_cert : **DIFFERENT!!!**\n"
 
 				encoded := pem.EncodeToMemory(&pem.Block{
 					Type:  "CERTIFICATE",
-					Bytes: w.vendorCert,
+					Bytes: efiVendorCert,
 				})
 				report += "PEM: \n```\n" + string(encoded) + "\n```\n"
 			}
 		}
 		report += "\n"
 	}
+
+	report += "\n"
+	if success {
+		report += "**SUCCESS**"
+	} else {
+		report += "**FAILED**"
+	}
+
 	return report
 }
 
