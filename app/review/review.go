@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"debug/pe"
 	"encoding/binary"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/pem"
 	"flag"
@@ -322,6 +323,7 @@ func (w *WorkingContext) buildReport() string {
 		report += "\n```\n"
 	}
 
+	// ==================== VENDOR CERTIFICATE ====================
 	report += "## vendor certificate\n\n"
 	cert, err := x509.ParseCertificate(w.vendorCert)
 	if err != nil {
@@ -357,6 +359,21 @@ func (w *WorkingContext) buildReport() string {
 	}
 	report += "\n"
 
+	// ==================== SBAT ====================
+	report += "## SBAT\n\n"
+	report += "```\n" + w.sbat + "\n```\n\n"
+	sbatReader := csv.NewReader(strings.NewReader(w.sbat))
+	records, err := sbatReader.ReadAll()
+	_ = records
+	if err == nil {
+		report += "- CSV Format Check : OK (Caution: Check only csv format, not sbat format)\n"
+	} else {
+		success = false
+		report += "- CSV Format Check : **FAILED**: " + err.Error() + "\n"
+	}
+	report += "\n"
+
+	// ==================== EFI FILES ====================
 	for _, file := range w.efiFiles {
 		report += fmt.Sprintf("## EFI FILE: %s\n\n", filepath.Base(file.Name))
 		if file.Hash == file.ComputedHash {
@@ -398,6 +415,7 @@ func (w *WorkingContext) buildReport() string {
 		report += "\n"
 	}
 
+	// ==================== RESULT ====================
 	report += "\n"
 	if success {
 		report += "**SUCCESS**"
