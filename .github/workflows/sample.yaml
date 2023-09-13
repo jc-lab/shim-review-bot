@@ -24,6 +24,10 @@ on:
         description: 'vendor cert file'
         required: true
         default: 'vendor_cert.der'
+      sbat:
+        description: 'sbat.csv file'
+        required: true
+        default: 'sbat.csv'
       report-output:
         description: 'review file output path'
         required: false
@@ -40,4 +44,5 @@ jobs:
           build-script: ${{ inputs.build-script }}
           output-file: ${{ inputs.output-file }}
           vendor-cert: ${{ inputs.vendor-cert }}
+          sbat: ${{ inputs.sbat }}
           report-output: ${{ inputs.report-output }}

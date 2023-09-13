@@ -64,11 +64,14 @@ type WorkingContext struct {
 }
 
 func Main(flagSet *flag.FlagSet, args []string) {
+	var commentFile string
 	var buildCommand string
 	var outputFile string
 	var reportFile string
 	var vendorCert string
 	var sbat string
+
+	flagSet.StringVar(&commentFile, "comment-file", "", "issue comment file")
 
 	flagSet.StringVar(&buildCommand, "build-script", "", "build-script file")
 	flagSet.StringVar(&outputFile, "output-file", "", "docker output file (tar)")

@@ -1,6 +1,9 @@
 name: 'shim Auto Review bot'
 description: 'shim Auto Review bot'
 inputs:
+  comment-file:
+    description: 'comment body file'
+    required: false
   issue-repository:
     description: 'issue repository'
     required: false
@@ -19,6 +22,9 @@ inputs:
     required: false
   vendor-cert:
     description: 'vendor cert file'
+    required: false
+  sbat:
+    description: 'sbat file'
     required: false
   report-output:
     description: 'review file output path'
@@ -42,13 +48,14 @@ runs:
         [ -n "${{ inputs.output-file }}" ] && export BUILD_OUTPUT_FILE="${{ inputs.output-file }}" || export BUILD_OUTPUT_FILE="output.tar"
         [ -n "${{ inputs.build-script }}" ] && BUILD_SCRIPT="${{ inputs.build-script }}" || BUILD_SCRIPT="${{ github.action_path }}/default-build-script.sh"
         [ -n "${{ inputs.vendor-cert }}" ] && export VENDOR_CERT="${{ inputs.vendor-cert }}" || export VENDOR_CERT="vendor_cert.der"
+        [ -n "${{ inputs.sbat }}" ] && export SBAT_FILE="${{ inputs.sbat }}" || export SBAT_FILE="sbat.csv"
         [ -n "${{ inputs.report-output }}" ] && export REPORT_OUTPUT="${{ inputs.report-output }}" || export REPORT_OUTPUT="/tmp/report.md"
         echo "REPORT_OUTPUT=${REPORT_OUTPUT}" >> "$GITHUB_ENV"
         cd $(cat /tmp/working-directory.txt)
         echo "WORKING DIRECTORY: $PWD"
         ls -al
         echo ""
-        shim-review-bot review --build-script "${BUILD_SCRIPT}" --output-file "${BUILD_OUTPUT_FILE}" --vendor-cert "${VENDOR_CERT}" --report-output "/tmp/report-generated.md"
+        shim-review-bot review --comment-file "${{ inputs.comment-file }}" --build-script "${BUILD_SCRIPT}" --output-file "${BUILD_OUTPUT_FILE}" --sbat "${SBAT_FILE}" --vendor-cert "${VENDOR_CERT}" --report-output "/tmp/report-generated.md"
         echo "**Disclaimer: I am not a not an authorized reviewer. Automatic reproduction check bot (https://github.com/jc-lab/shim-review-bot).**" > ${REPORT_OUTPUT}
         echo "" >> ${REPORT_OUTPUT}
         echo "Job URL : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> ${REPORT_OUTPUT}
