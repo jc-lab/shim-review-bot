@@ -113,6 +113,9 @@ func Main(flagSet *flag.FlagSet, args []string) {
 			goto done
 		}
 
+		if config.Source != "" {
+			workingContext.source = config.Source
+		}
 		if config.BuildScript != "" {
 			buildCommand = config.BuildScript
 		}
@@ -197,7 +200,7 @@ func Main(flagSet *flag.FlagSet, args []string) {
 		}
 		defer peFile.Close()
 
-		sbat := peFile.Section(".sbatContent")
+		sbat := peFile.Section(".sbat")
 		if sbat != nil {
 			raw, err := sbat.Data()
 			if err != nil {
