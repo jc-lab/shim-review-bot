@@ -242,10 +242,10 @@ func Main(flagSet *flag.FlagSet, args []string) {
 			}
 		}
 
-		if optional, ok := peFile.OptionalHeader.(pe.OptionalHeader64); ok {
+		if optional, ok := peFile.OptionalHeader.(*pe.OptionalHeader64); ok {
 			efiFile.FlagNXCompat = optional.DllCharacteristics&0x100 != 0
 		}
-		if optional, ok := peFile.OptionalHeader.(pe.OptionalHeader32); ok {
+		if optional, ok := peFile.OptionalHeader.(*pe.OptionalHeader32); ok {
 			efiFile.FlagNXCompat = optional.DllCharacteristics&0x100 != 0
 		}
 
