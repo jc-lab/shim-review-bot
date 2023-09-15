@@ -12,8 +12,15 @@ import (
 )
 
 var (
-	githubTreeUrlPattern = regexp.MustCompile("(https://github\\.com/.+)/tree/([^/]+)(?:/(.+))?")
+	githubTreeUrlPattern   = regexp.MustCompile("(https://github\\.com/.+)/tree/([^/]+)(?:/(.+))?")
+	bitbucketSrcUrlPattern = regexp.MustCompile("(https://bitbucket\\.org/.+)/src/([^/]+)(?:/(.+))?")
 )
+
+type Source struct {
+	RepositoryUrl string
+	Tag           string
+	Directory     string
+}
 
 func Main(flagSet *flag.FlagSet, args []string) {
 	var configFile string
@@ -45,10 +52,9 @@ func Main(flagSet *flag.FlagSet, args []string) {
 
 	os.MkdirAll(dest, 0755)
 
-	matches := githubTreeUrlPattern.FindStringSubmatch(source)
-
-	if len(matches) > 0 {
-		cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("git clone %s %s && cd %s && git checkout -f %s", matches[1], dest, dest, matches[2]))
+	parsed := ParseSourceUrl(source)
+	if parsed != nil {
+		cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("git clone %s %s && cd %s && git checkout -f %s", parsed.RepositoryUrl, dest, dest, parsed.Tag))
 		cmd.Stdout = os.Stderr
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
@@ -58,9 +64,24 @@ func Main(flagSet *flag.FlagSet, args []string) {
 			log.Fatalln(err)
 		}
 
-		os.Stdout.WriteString(dest + "/" + matches[3])
+		os.Stdout.WriteString(dest + "/" + parsed.Directory)
 	} else {
 		log.Printf("invalid url: %s", source)
 		os.Exit(1)
 	}
+}
+
+func ParseSourceUrl(source string) *Source {
+	matches := githubTreeUrlPattern.FindStringSubmatch(source)
+	if matches == nil {
+		matches = bitbucketSrcUrlPattern.FindStringSubmatch(source)
+	}
+	if matches != nil {
+		return &Source{
+			RepositoryUrl: matches[1] + ".git",
+			Tag:           matches[2],
+			Directory:     matches[3],
+		}
+	}
+	return nil
 }
