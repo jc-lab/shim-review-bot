@@ -3,14 +3,14 @@ package parse_comment
 import (
 	"bufio"
 	"fmt"
-	"github.com/jc-lab/shim-review-bot/app/review"
+	"github.com/jc-lab/shim-review-bot/app/config"
 	"gopkg.in/yaml.v3"
 	"regexp"
 	"strings"
 )
 
 type ParsedComment struct {
-	review.Config
+	config.Config
 }
 
 type readState int

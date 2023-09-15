@@ -3,7 +3,7 @@ package download
 import (
 	"flag"
 	"fmt"
-	"github.com/jc-lab/shim-review-bot/app/review"
+	"github.com/jc-lab/shim-review-bot/app/config"
 	"gopkg.in/yaml.v3"
 	"log"
 	"os"
@@ -39,7 +39,7 @@ func Main(flagSet *flag.FlagSet, args []string) {
 			log.Fatalln(err)
 		}
 
-		var config review.Config
+		var config config.Config
 		if err = yaml.Unmarshal(raw, &config); err != nil {
 			err = fmt.Errorf("config file parse failed: %v", err)
 			log.Fatalln(err)

@@ -14,6 +14,8 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	config2 "github.com/jc-lab/shim-review-bot/app/config"
+	"github.com/jc-lab/shim-review-bot/app/download"
 	"gopkg.in/yaml.v3"
 	"io"
 	"log"
@@ -52,7 +54,9 @@ type EfiFile struct {
 }
 
 type WorkingContext struct {
-	source            string
+	sourceUrl string
+	source    *download.Source
+
 	vendorCertPath    string
 	vendorCertContent []byte
 	sbatPath          string
@@ -81,8 +85,8 @@ func Main(flagSet *flag.FlagSet, args []string) {
 	var workingContext WorkingContext
 
 	flagSet.StringVar(&configFile, "config", "", "config file")
-	flagSet.StringVar(&sourceRoot, "source-root", "", "source root to find shim.efi")
-	flagSet.StringVar(&workingContext.source, "source", "", "source url")
+	flagSet.StringVar(&sourceRoot, "source-root", "", "sourceUrl root to find shim.efi")
+	flagSet.StringVar(&workingContext.sourceUrl, "source", "", "source url")
 
 	flagSet.StringVar(&buildCommand, "build-script", "", "build-script file")
 	flagSet.StringVar(&outputFile, "output-file", "", "docker output file (tar)")
@@ -105,7 +109,7 @@ func Main(flagSet *flag.FlagSet, args []string) {
 			goto done
 		}
 
-		var config Config
+		var config config2.Config
 		if err = yaml.Unmarshal(raw, &config); err != nil {
 			err = fmt.Errorf("config file parse failed: %v", err)
 			log.Println(err)
@@ -114,7 +118,7 @@ func Main(flagSet *flag.FlagSet, args []string) {
 		}
 
 		if config.Source != "" {
-			workingContext.source = config.Source
+			workingContext.sourceUrl = config.Source
 		}
 		if config.BuildScript != "" {
 			buildCommand = config.BuildScript
@@ -128,6 +132,10 @@ func Main(flagSet *flag.FlagSet, args []string) {
 		if config.Sbat != "" {
 			workingContext.sbatPath = config.Sbat
 		}
+	}
+
+	if workingContext.sourceUrl != "" {
+		workingContext.source = download.ParseSourceUrl(workingContext.sourceUrl)
 	}
 
 	workingContext.vendorCertContent, workingContext.otherErr = os.ReadFile(workingContext.vendorCertPath)
@@ -411,7 +419,7 @@ func (w *WorkingContext) extractFiles(tarFile string, outputDirectory string) er
 			w.exportedFiles = append(w.exportedFiles, &FileAndHash{
 				Path:        destFileName,
 				Name:        filepath.Base(header.Name),
-				RelatedPath: header.Name,
+				RelatedPath: hashEntry.Path,
 				Hash:        hashEntry.Hash,
 			})
 		} else {
@@ -424,8 +432,18 @@ func (w *WorkingContext) extractFiles(tarFile string, outputDirectory string) er
 	return nil
 }
 
-func (w *WorkingContext) pathToUrl(filepath string) string {
-	return w.source + "/" + filepath
+func (w *WorkingContext) buildPathToUrl(filepath string) string {
+	return w.sourceUrl + "/" + filepath
+}
+
+func (w *WorkingContext) absPathToUrl(filepath string) string {
+	if w.source == nil {
+		return filepath
+	}
+	prefix := strings.TrimSuffix(w.sourceUrl, "/")
+	directorySuffix := "/" + w.source.Directory
+	prefix = prefix[:len(prefix)-len(directorySuffix)]
+	return prefix + "/" + filepath
 }
 
 func (w *WorkingContext) buildReport() string {
@@ -452,7 +470,7 @@ func (w *WorkingContext) buildReport() string {
 	if true {
 		// ==================== VENDOR CERTIFICATE ====================
 		report += "## Vendor Certificate\n\n"
-		report += "Source: " + w.pathToUrl(w.vendorCertPath) + "\n"
+		report += "Source: " + w.buildPathToUrl(w.vendorCertPath) + "\n"
 		cert, err := x509.ParseCertificate(w.vendorCertContent)
 		if err != nil {
 			success = false
@@ -489,7 +507,7 @@ func (w *WorkingContext) buildReport() string {
 
 		// ==================== SBAT ====================
 		report += "## SBAT\n\n"
-		report += "Source: " + w.pathToUrl(w.sbatPath) + "\n"
+		report += "Source: " + w.buildPathToUrl(w.sbatPath) + "\n"
 		report += "```\n" + w.sbatContent + "\n```\n\n"
 		sbatReader := csv.NewReader(strings.NewReader(w.sbatContent))
 		records, err := sbatReader.ReadAll()
@@ -517,7 +535,7 @@ func (w *WorkingContext) buildReport() string {
 			report += "- reproduced file: " + file.RelatedPath + "\n"
 
 			if found {
-				report += "- prebuilt file: " + w.pathToUrl(prebuilt.RelatedPath) + "\n"
+				report += "- prebuilt file: " + w.absPathToUrl(prebuilt.RelatedPath) + "\n"
 
 				delete(prebuiltFiles, filename)
 				if prebuilt.Hash == file.ComputedHash {
