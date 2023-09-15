@@ -54,6 +54,8 @@ type WorkingContext struct {
 	vendorCert []byte
 	sbat       string
 
+	prebuiltEfiFileHashes map[string]string
+
 	outputState   outputState
 	hashes        []*HashSum
 	exportedFiles []*ExportedFile
@@ -71,13 +73,17 @@ func Main(flagSet *flag.FlagSet, args []string) {
 	var reportFile string
 	var vendorCert string
 	var sbat string
+	var buildLogFile string
+	var sourceRoot string
 
 	flagSet.StringVar(&configFile, "config", "", "config file")
+	flagSet.StringVar(&sourceRoot, "source-root", "", "source root to find shim.efi")
 
 	flagSet.StringVar(&buildCommand, "build-script", "", "build-script file")
 	flagSet.StringVar(&outputFile, "output-file", "", "docker output file (tar)")
 	flagSet.StringVar(&vendorCert, "vendor-cert", "vendor_cert.der", "vendor cert der file")
 	flagSet.StringVar(&sbat, "sbat", "sbat.csv", "vendor cert der file")
+	flagSet.StringVar(&buildLogFile, "build-log", "", "build log output file")
 
 	flagSet.StringVar(&reportFile, "report-output", "", "report output file")
 	flagSet.Parse(args)
@@ -130,7 +136,18 @@ func Main(flagSet *flag.FlagSet, args []string) {
 	}
 	workingContext.sbat = string(sbatRaw)
 
-	workingContext.buildErr = workingContext.build(buildCommand)
+	workingContext.otherErr = workingContext.findPrebuiltEfiFiles(sourceRoot)
+	if workingContext.otherErr != nil {
+		log.Printf("cannot find prebuilt efi files: %v", workingContext.otherErr)
+		goto done
+	} else if len(workingContext.prebuiltEfiFileHashes) == 0 {
+		err := fmt.Errorf("cannot find prebuilt efi files in %s", sourceRoot)
+		workingContext.otherErr = err
+		log.Println(err)
+		goto done
+	}
+
+	workingContext.buildErr = workingContext.build(buildCommand, buildLogFile)
 	if workingContext.buildErr != nil {
 		log.Printf("build failed: %v", workingContext.buildErr)
 		goto done
@@ -227,7 +244,27 @@ var (
 	hashSumPattern = regexp.MustCompile("([0-9a-f]+)\\s+(.+)")
 )
 
-func (w *WorkingContext) build(buildCommand string) error {
+func (w *WorkingContext) findPrebuiltEfiFiles(sourceRoot string) error {
+	efiFiles, err := filepath.Glob(sourceRoot + "/shim*.efi")
+	if err != nil {
+		return err
+	}
+
+	w.prebuiltEfiFileHashes = map[string]string{}
+
+	for _, file := range efiFiles {
+		hash, err := hashFileSha256(file)
+		if err != nil {
+			log.Printf("file(%s) hash failed: %v", file, err)
+		} else {
+			w.prebuiltEfiFileHashes[filepath.Base(file)] = hash
+		}
+	}
+
+	return nil
+}
+
+func (w *WorkingContext) build(buildCommand string, logFile string) error {
 	cmd := exec.Command(buildCommand)
 	cmd.Stdin = os.Stdin
 
@@ -241,12 +278,30 @@ func (w *WorkingContext) build(buildCommand string) error {
 		return err
 	}
 
+	var logFileStream io.WriteCloser
+	if logFile != "" {
+		logFileStream, err = os.OpenFile(logFile, os.O_RDWR|os.O_CREATE, 0644)
+	}
+	defer func() {
+		if logFileStream != nil {
+			logFileStream.Close()
+		}
+	}()
+
 	go func() {
-		reader := io.TeeReader(stderr, os.Stderr)
+		dest := logFileStream
+		if dest == nil {
+			dest = os.Stderr
+		}
+		reader := io.TeeReader(stderr, dest)
 		w.handleOutput(reader)
 	}()
 	go func() {
-		reader := io.TeeReader(stdout, os.Stdout)
+		dest := logFileStream
+		if dest == nil {
+			dest = os.Stdout
+		}
+		reader := io.TeeReader(stdout, dest)
 		w.handleOutput(reader)
 	}()
 
@@ -414,8 +469,34 @@ func (w *WorkingContext) buildReport() string {
 		report += "\n"
 
 		// ==================== EFI FILES ====================
+		prebuiltFiles := map[string]string{}
+		for k, v := range w.prebuiltEfiFileHashes {
+			prebuiltFiles[k] = v
+		}
+
 		for _, file := range w.efiFiles {
+			filename := filepath.Base(file.Name)
+			prebuilt, found := prebuiltFiles[filename]
+
 			report += fmt.Sprintf("## EFI FILE: %s\n\n", filepath.Base(file.Name))
+
+			if found {
+				report += "- [X] Found in prebuilt file\n"
+				delete(prebuiltFiles, filename)
+				if prebuilt == file.ComputedHash {
+					report += "- [X] Reproduce: Same hash\n"
+				} else {
+					success = false
+					report += "- [ ] Reproduce: Different hash!!!\n"
+					report += "- prebuilt hash: " + prebuilt + "\n"
+					report += "- computed hash: " + file.ComputedHash + "\n"
+				}
+			} else {
+				success = false
+				report += "- [ ] Not Found in prebuilt file!\n"
+				report += "- [ ] Reproduce: Not Found\n"
+			}
+
 			if file.Hash == file.ComputedHash {
 				report += fmt.Sprintf("- hash (sha256) : %s\n", file.Hash)
 			} else {
@@ -452,6 +533,14 @@ func (w *WorkingContext) buildReport() string {
 					report += "```\n" + string(encoded) + "\n```\n"
 				}
 			}
+			report += "\n"
+		}
+
+		for name, hash := range prebuiltFiles {
+			success = false
+			report += "## Not Built EFI File: " + name + "\n"
+			report += "- [ ] It is prebuilt, but not built as a Dockerfile.\n"
+			report += "- hash : " + hash + "\n"
 			report += "\n"
 		}
 	}
