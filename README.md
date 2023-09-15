@@ -45,3 +45,24 @@ vendor-cert: vendor_cert.der
 sbat: sbat.csv
 \```
 ```
+
+# Review Repository
+
+## Required Files
+
+- Dockerfile (overridable by `build-script` and `output` parameter)
+- vendor_cert.der (overridable by `vendor-cert` parameter)
+- sbat.csv (overridable by `sbat` parameter)
+
+Sample review directory: https://github.com/jc-lab/shim-review-bot/tree/master/sample-repo
+(need sbat.csv, vendor certificate, and Dockerfile.)
+
+## Dockerfile format
+
+After built:
+
+```dockerfile
+RUN echo "::review hash-start" && \
+    for name in $(find YOUR_OUTPUT_DIRECTORY -type f -name "shim*.efi"); do sha256sum $name; done && \
+    echo "::review hash-end"
+```
