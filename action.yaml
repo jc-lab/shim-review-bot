@@ -85,7 +85,7 @@ runs:
           shim-review-bot review --source-root "/tmp/source" --build-script "${BUILD_SCRIPT}" --output-file "${BUILD_OUTPUT_FILE}" --sbat "${SBAT_FILE}" --vendor-cert "${VENDOR_CERT}" --report-output "/tmp/report-generated.md"
         fi
         touch ${REPORT_OUTPUT}
-        [ -n "${{ inputs.build-script }}" ] && echo "Used Build Script: ${{ inputs.build-script }}" >> ${REPORT_OUTPUT} || echo "Used Dockerfile: ${{ inputs.source }}/Dockerfile" >> ${REPORT_OUTPUT}
+        [ -n "${{ inputs.build-script }}" ] && echo "Used Build Script: ${{ inputs.build-script }}" >> ${REPORT_OUTPUT} || echo "Used Dockerfile: Dockerfile" >> ${REPORT_OUTPUT}
         cat /tmp/report-generated.md >> ${REPORT_OUTPUT}
     - id: report
       if: inputs.issue-number != ''
