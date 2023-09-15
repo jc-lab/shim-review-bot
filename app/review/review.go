@@ -250,6 +250,13 @@ func (w *WorkingContext) findPrebuiltEfiFiles(sourceRoot string) error {
 		return err
 	}
 
+	efiFilesInSubDirectory, err := filepath.Glob(sourceRoot + "/**/shim*.efi")
+	if err != nil {
+		return err
+	}
+
+	efiFiles = append(efiFiles, efiFilesInSubDirectory...)
+
 	w.prebuiltEfiFileHashes = map[string]string{}
 
 	for _, file := range efiFiles {
