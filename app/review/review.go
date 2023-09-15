@@ -196,7 +196,7 @@ func Main(flagSet *flag.FlagSet, args []string) {
 			FileAndHash: FileAndHash{
 				Path:        basename,
 				Hash:        item.Hash,
-				RelatedPath: item.Path,
+				RelatedPath: item.RelatedPath,
 			},
 			ComputedHash: computedHash,
 		}
