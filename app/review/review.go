@@ -51,6 +51,7 @@ type EfiFile struct {
 	Sbat               string
 	VendorCert         []byte
 	VendorDeAuthorized []byte
+	FlagNXCompat       bool
 }
 
 type WorkingContext struct {
@@ -239,6 +240,13 @@ func Main(flagSet *flag.FlagSet, args []string) {
 					efiFile.VendorDeAuthorized = vendorDeAuthorized
 				}
 			}
+		}
+
+		if optional, ok := peFile.OptionalHeader.(pe.OptionalHeader64); ok {
+			efiFile.FlagNXCompat = optional.DllCharacteristics&0x100 != 0
+		}
+		if optional, ok := peFile.OptionalHeader.(pe.OptionalHeader32); ok {
+			efiFile.FlagNXCompat = optional.DllCharacteristics&0x100 != 0
 		}
 
 		workingContext.efiFiles = append(workingContext.efiFiles, efiFile)
@@ -587,6 +595,14 @@ func (w *WorkingContext) buildReport() string {
 					report += "```\n" + string(encoded) + "\n```\n"
 				}
 			}
+
+			if file.FlagNXCompat {
+				report += "- [X] NX Compat: True"
+			} else {
+				success = false
+				report += "- [ ] NX Compat: False"
+			}
+
 			report += "\n"
 		}
 
