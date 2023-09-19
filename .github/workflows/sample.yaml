@@ -36,7 +36,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: jc-lab/shim-review-bot@master
+      - uses: jc-lab/shim-review-bot@v0.0.6-rc4
         with:
           issue-repository: ${{ inputs.issue-repository }}
           issue-number: ${{ inputs.issue-number }}
