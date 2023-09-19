@@ -37,23 +37,30 @@ runs:
   using: "composite"
   steps:
     - run: |
-        mkdir -p "$HOME/.bin/"
-        echo "$HOME/.bin/" >> $GITHUB_PATH
+        mkdir -p "${{ github.workspace }}/.shim-review-bot/bin/"
+        echo "${{ github.workspace }}/.shim-review-bot/bin/" >> $GITHUB_PATH
+        echo "github.action_repository: ${{ github.action_repository }}"
+        echo "github.action_ref: ${{ github.action_ref }}"
       shell: bash
     - uses: robinraju/release-downloader@v1.8
       if: github.action_ref == 'master'
       with:
-        repository: ${{ github.action_repository }}
+        repository: jc-lab/shim-review-bot
         latest: true
         fileName: "shim-review-bot"
-        out-file-path: "$HOME/.bin/shim-review-bot"
+        out-file-path: ".shim-review-bot/bin/"
     - uses: robinraju/release-downloader@v1.8
       if: github.action_ref != 'master'
       with:
-        repository: ${{ github.action_repository }}
+        repository: jc-lab/shim-review-bot
         tag: ${{ github.action_ref }}
         fileName: "shim-review-bot"
-        out-file-path: "$HOME/.bin/shim-review-bot"
+        out-file-path: ".shim-review-bot/bin/"
+    - shell: bash
+      run: |
+        ls -al ${{ github.workspace }}/.shim-review-bot/bin/
+        sha256sum ${{ github.workspace }}/.shim-review-bot/bin/shim-review-bot
+        chmod +x ${{ github.workspace }}/.shim-review-bot/bin/shim-review-bot
     - name: Create Comment
       id: comment
       if: inputs.issue-number != ''
