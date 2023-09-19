@@ -36,24 +36,33 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - run: |
+    - name: "Download shim-review-bot"
+      if: github.action_ref != 'master'
+      shell: bash
+      env:
+        GITHUB_ACTION_REF_EXP: ${{ github.action_ref }}
+        GITHUB_ACTION_REPOSITORY_EXP: ${{ github.action_repository }}
+      run: |
         mkdir -p "$HOME/.bin/"
         echo "$HOME/.bin/" >> $GITHUB_PATH
-      shell: bash
-    - uses: robinraju/release-downloader@v1.8
+        wget -O "$HOME/.bin/shim-review-bot" https://github.com/$GITHUB_ACTION_REPOSITORY_EXP/releases/download/$GITHUB_ACTION_REF_EXP/shim-review-bot
+        chmod +x "$HOME/.bin/shim-review-bot"
+    - uses: actions/setup-go@v4
       if: github.action_ref == 'master'
       with:
-        repository: ${{ github.action_repository }}
-        latest: true
-        fileName: "shim-review-bot"
-        out-file-path: "$HOME/.bin/shim-review-bot"
-    - uses: robinraju/release-downloader@v1.8
-      if: github.action_ref != 'master'
-      with:
-        repository: ${{ github.action_repository }}
-        tag: ${{ github.action_ref }}
-        fileName: "shim-review-bot"
-        out-file-path: "$HOME/.bin/shim-review-bot"
+        go-version: '>=1.20.0'
+    - name: "Build shim-review-bot"
+      if: github.action_ref == 'master'
+      shell: bash
+      env:
+        GITHUB_ACTION_REF_EXP: ${{ github.action_ref }}
+        GITHUB_ACTION_REPOSITORY_EXP: ${{ github.action_repository }}
+      run: |
+        mkdir -p "$HOME/.bin/"
+        echo "$HOME/.bin/" >> $GITHUB_PATH
+        cd ${{ github.action_path }}
+        /bin/bash ./bot-build.sh
+        cp shim-review-bot $HOME/.bin/shim-review-bot
     - name: Create Comment
       id: comment
       if: inputs.issue-number != ''
