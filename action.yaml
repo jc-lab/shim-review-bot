@@ -37,10 +37,23 @@ runs:
   using: "composite"
   steps:
     - run: |
-        echo "${{ github.action_path }}" >> $GITHUB_PATH
-        wget -O "${{ github.action_path }}/shim-review-bot" "https://github.com/jc-lab/shim-review-bot/releases/download/${{ github.action_ref }}/shim-review-bot"
-        chmod +x ${{ github.action_path }}/shim-review-bot
+        mkdir -p "$HOME/.bin/"
+        echo "$HOME/.bin/" >> $GITHUB_PATH
       shell: bash
+    - uses: robinraju/release-downloader@v1.8
+      if: github.action_ref == 'master'
+      with:
+        repository: ${{ github.action_repository }}
+        latest: true
+        fileName: "shim-review-bot"
+        out-file-path: "$HOME/.bin/shim-review-bot"
+    - uses: robinraju/release-downloader@v1.8
+      if: github.action_ref != 'master'
+      with:
+        repository: ${{ github.action_repository }}
+        tag: ${{ github.action_ref }}
+        fileName: "shim-review-bot"
+        out-file-path: "$HOME/.bin/shim-review-bot"
     - name: Create Comment
       id: comment
       if: inputs.issue-number != ''
