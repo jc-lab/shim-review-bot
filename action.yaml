@@ -38,6 +38,7 @@ runs:
   steps:
     - run: |
         echo "${{ github.action_path }}" >> $GITHUB_PATH
+        wget -O "${{ github.action_path }}/shim-review-bot" "https://github.com/jc-lab/shim-review-bot/releases/download/${{ github.action_ref }}/shim-review-bot"
         chmod +x ${{ github.action_path }}/shim-review-bot
       shell: bash
     - name: Create Comment
