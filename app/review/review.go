@@ -16,6 +16,7 @@ import (
 	"fmt"
 	config2 "github.com/jc-lab/shim-review-bot/app/config"
 	"github.com/jc-lab/shim-review-bot/app/download"
+	"github.com/jc-lab/shim-review-bot/app/review/testcase"
 	"gopkg.in/yaml.v3"
 	"io"
 	"log"
@@ -52,6 +53,7 @@ type EfiFile struct {
 	VendorCert         []byte
 	VendorDeAuthorized []byte
 	FlagNXCompat       bool
+	TestResults        []*testcase.TestResult
 }
 
 type WorkingContext struct {
@@ -215,10 +217,7 @@ func Main(flagSet *flag.FlagSet, args []string) {
 			if err != nil {
 				log.Printf("sbatContent read failed: %v", err)
 			} else {
-				nullPos := bytes.IndexByte(raw, 0)
-				if nullPos > 0 {
-					raw = raw[:nullPos]
-				}
+				raw = raw[:sbat.VirtualSize]
 				efiFile.Sbat = string(raw)
 			}
 		}
@@ -228,6 +227,8 @@ func Main(flagSet *flag.FlagSet, args []string) {
 			if err != nil {
 				log.Printf("vendor_cert read failed: %v", err)
 			} else {
+				raw = raw[:certTableSection.VirtualSize]
+
 				vendorAuthorizedSize := binary.LittleEndian.Uint32(raw[0:4])
 				vendorDeAuthorizedSize := binary.LittleEndian.Uint32(raw[4:8])
 				vendorAuthorizedOffset := binary.LittleEndian.Uint32(raw[8:12])
@@ -248,6 +249,11 @@ func Main(flagSet *flag.FlagSet, args []string) {
 		if optional, ok := peFile.OptionalHeader.(*pe.OptionalHeader32); ok {
 			efiFile.FlagNXCompat = optional.DllCharacteristics&0x100 != 0
 		}
+
+		testContext := &testcase.TestContext{
+			Pe: peFile,
+		}
+		efiFile.TestResults = testcase.DoTests(testContext)
 
 		workingContext.efiFiles = append(workingContext.efiFiles, efiFile)
 	}
@@ -597,10 +603,19 @@ func (w *WorkingContext) buildReport() string {
 			}
 
 			if file.FlagNXCompat {
-				report += "- [X] NX Compat: True"
+				report += "- [X] NX Compat: True\n"
 			} else {
 				success = false
-				report += "- [ ] NX Compat: False"
+				report += "- [ ] NX Compat: False\n"
+			}
+
+			for _, testResult := range file.TestResults {
+				if testResult.Result {
+					report += "- [X] " + testResult.Name + "\n"
+				} else {
+					report += "- [ ] " + testResult.Name + "\n"
+					report += testResult.Message + "\n"
+				}
 			}
 
 			report += "\n"
