@@ -316,15 +316,19 @@ var (
 )
 
 func (w *WorkingContext) findPrebuiltEfiFiles(sourceRoot string) error {
-	efiFiles, err := filepath.Glob(sourceRoot + "/shim*.efi")
+	pattern := sourceRoot + "/shim*.efi"
+	efiFiles, err := filepath.Glob(pattern)
 	if err != nil {
 		return err
 	}
+	log.Printf("Search prebuilt shim efi files with '%s': %v", pattern, efiFiles)
 
-	efiFilesInSubDirectory, err := filepath.Glob(sourceRoot + "/**/shim*.efi")
+	pattern = sourceRoot + "/**/shim*.efi"
+	efiFilesInSubDirectory, err := filepath.Glob(pattern)
 	if err != nil {
 		return err
 	}
+	log.Printf("Search prebuilt shim efi files with '%s': %v", pattern, efiFilesInSubDirectory)
 
 	efiFiles = append(efiFiles, efiFilesInSubDirectory...)
 
@@ -352,15 +356,19 @@ func (w *WorkingContext) findPrebuiltEfiFiles(sourceRoot string) error {
 }
 
 func (w *WorkingContext) findPatches(sourceRoot string) error {
-	patchFiles, err := filepath.Glob(sourceRoot + "/*.patch")
+	pattern := sourceRoot + "/*.patch"
+	patchFiles, err := filepath.Glob(pattern)
 	if err != nil {
 		return err
 	}
+	log.Printf("Search patch files with '%s': %v", pattern, patchFiles)
 
-	patchFilesInSubDirectory, err := filepath.Glob(sourceRoot + "/**/*.patch")
+	pattern = sourceRoot + "/**/*.patch"
+	patchFilesInSubDirectory, err := filepath.Glob(pattern)
 	if err != nil {
 		return err
 	}
+	log.Printf("Search patch files with '%s': %v", pattern, patchFilesInSubDirectory)
 
 	patchFiles = append(patchFiles, patchFilesInSubDirectory...)
 
