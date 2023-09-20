@@ -3,6 +3,7 @@ module github.com/jc-lab/shim-review-bot
 go 1.20
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.6.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect

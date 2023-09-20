@@ -14,6 +14,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"github.com/bmatcuk/doublestar/v4"
 	config2 "github.com/jc-lab/shim-review-bot/app/config"
 	"github.com/jc-lab/shim-review-bot/app/download"
 	"github.com/jc-lab/shim-review-bot/app/review/testcase"
@@ -316,21 +317,12 @@ var (
 )
 
 func (w *WorkingContext) findPrebuiltEfiFiles(sourceRoot string) error {
-	pattern := sourceRoot + "/shim*.efi"
-	efiFiles, err := filepath.Glob(pattern)
+	pattern := sourceRoot + "/**/shim*.efi"
+	efiFiles, err := doublestar.FilepathGlob(pattern)
 	if err != nil {
 		return err
 	}
 	log.Printf("Search prebuilt shim efi files with '%s': %v", pattern, efiFiles)
-
-	pattern = sourceRoot + "/**/shim*.efi"
-	efiFilesInSubDirectory, err := filepath.Glob(pattern)
-	if err != nil {
-		return err
-	}
-	log.Printf("Search prebuilt shim efi files with '%s': %v", pattern, efiFilesInSubDirectory)
-
-	efiFiles = append(efiFiles, efiFilesInSubDirectory...)
 
 	w.prebuiltEfiFileHashes = map[string]*FileAndHash{}
 
@@ -356,21 +348,12 @@ func (w *WorkingContext) findPrebuiltEfiFiles(sourceRoot string) error {
 }
 
 func (w *WorkingContext) findPatches(sourceRoot string) error {
-	pattern := sourceRoot + "/*.patch"
-	patchFiles, err := filepath.Glob(pattern)
+	pattern := sourceRoot + "/**/*.patch"
+	patchFiles, err := doublestar.FilepathGlob(pattern)
 	if err != nil {
 		return err
 	}
 	log.Printf("Search patch files with '%s': %v", pattern, patchFiles)
-
-	pattern = sourceRoot + "/**/*.patch"
-	patchFilesInSubDirectory, err := filepath.Glob(pattern)
-	if err != nil {
-		return err
-	}
-	log.Printf("Search patch files with '%s': %v", pattern, patchFilesInSubDirectory)
-
-	patchFiles = append(patchFiles, patchFilesInSubDirectory...)
 
 	for _, file := range patchFiles {
 		name := filepath.Base(file)
