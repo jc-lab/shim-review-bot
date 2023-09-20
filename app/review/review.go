@@ -696,7 +696,7 @@ func (w *WorkingContext) buildReport() string {
 	if len(w.patchFiles) == 0 {
 		report += "- No Patch Files\n"
 	} else {
-		report += ":robot: Human, “Why patches are being applied?” Please check."
+		report += ":robot: Human, “Why patches are being applied?” Please check.\n"
 		for _, patch := range w.patchFiles {
 			report += fmt.Sprintf("- [%s](%s)\n", patch.Name, w.absPathToUrl(patch.RelatedPath))
 		}
