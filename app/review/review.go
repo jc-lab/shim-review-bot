@@ -52,10 +52,16 @@ type PatchFile struct {
 	RelatedPath string
 }
 
+type SbatItem struct {
+	Vendor  string
+	Version int
+}
+
 type EfiFile struct {
 	FileAndHash
 	ComputedHash       string
 	Sbat               string
+	SbatLevel          []*SbatItem
 	VendorCert         []byte
 	VendorDeAuthorized []byte
 	FlagNXCompat       bool
@@ -79,6 +85,8 @@ type WorkingContext struct {
 	exportedFiles []*FileAndHash
 
 	efiFiles []*EfiFile
+
+	sbatLevel string
 
 	buildErr error
 	otherErr error
@@ -224,23 +232,41 @@ func Main(flagSet *flag.FlagSet, args []string) {
 		}
 		defer peFile.Close()
 
-		sbat := peFile.Section(".sbat")
-		if sbat != nil {
-			raw, err := sbat.Data()
+		section := peFile.Section(".sbat")
+		if section != nil {
+			raw, err := section.Data()
 			if err != nil {
-				log.Printf("sbatContent read failed: %v", err)
+				log.Printf(".sbat read failed: %v", err)
 			} else {
-				raw = raw[:sbat.VirtualSize]
+				raw = raw[:section.VirtualSize]
 				efiFile.Sbat = string(raw)
 			}
 		}
-		certTableSection := peFile.Section(".vendor_cert")
-		if certTableSection != nil {
-			raw, err := certTableSection.Data()
+
+		section = peFile.Section(".sbatlevel")
+		if section != nil {
+			raw, err := section.Data()
+			if err != nil {
+				log.Printf(".sbatlevel read failed: %v", err)
+			} else {
+				raw = raw[:section.VirtualSize]
+				for _, chunk := range bytes.Split(raw[12:], []byte{0}) {
+					if len(chunk) == 0 {
+						break
+					}
+					workingContext.sbatLevel = string(chunk)
+					efiFile.SbatLevel = parseSbat(string(chunk))
+				}
+			}
+		}
+
+		section = peFile.Section(".vendor_cert")
+		if section != nil {
+			raw, err := section.Data()
 			if err != nil {
 				log.Printf("vendor_cert read failed: %v", err)
 			} else {
-				raw = raw[:certTableSection.VirtualSize]
+				raw = raw[:section.VirtualSize]
 
 				vendorAuthorizedSize := binary.LittleEndian.Uint32(raw[0:4])
 				vendorDeAuthorizedSize := binary.LittleEndian.Uint32(raw[4:8])
@@ -558,6 +584,10 @@ func (w *WorkingContext) buildReport() string {
 			}
 		}
 		report += "\n"
+
+		// ==================== SBAT LEVEL ====================
+		report += "## SBAT LEVEL (in prebuilt efi file)\n\n"
+		report += "```\n" + w.sbatLevel + "\n```\n\n"
 
 		// ==================== SBAT ====================
 		report += "## SBAT\n\n"
