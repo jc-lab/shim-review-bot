@@ -46,6 +46,12 @@ type FileAndHash struct {
 	Hash        string
 }
 
+type PatchFile struct {
+	Path        string
+	Name        string
+	RelatedPath string
+}
+
 type EfiFile struct {
 	FileAndHash
 	ComputedHash       string
@@ -66,6 +72,7 @@ type WorkingContext struct {
 	sbatContent       string
 
 	prebuiltEfiFileHashes map[string]*FileAndHash
+	patchFiles            []*PatchFile
 
 	outputState   outputState
 	hashes        []*HashSum
@@ -162,6 +169,12 @@ func Main(flagSet *flag.FlagSet, args []string) {
 		err := fmt.Errorf("cannot find prebuilt efi files in %s", sourceRoot)
 		workingContext.otherErr = err
 		log.Println(err)
+		goto done
+	}
+
+	workingContext.otherErr = workingContext.findPatches(sourceRoot)
+	if workingContext.otherErr != nil {
+		log.Printf("cannot find patch files: %v", workingContext.otherErr)
 		goto done
 	}
 
@@ -312,6 +325,35 @@ func (w *WorkingContext) findPrebuiltEfiFiles(sourceRoot string) error {
 	return nil
 }
 
+func (w *WorkingContext) findPatches(sourceRoot string) error {
+	patchFiles, err := filepath.Glob(sourceRoot + "/*.patch")
+	if err != nil {
+		return err
+	}
+
+	patchFilesInSubDirectory, err := filepath.Glob(sourceRoot + "/**/*.patch")
+	if err != nil {
+		return err
+	}
+
+	patchFiles = append(patchFiles, patchFilesInSubDirectory...)
+
+	for _, file := range patchFiles {
+		name := filepath.Base(file)
+		rel, err := filepath.Rel(sourceRoot, file)
+		if err != nil {
+			log.Println("filepath.Rel failed: ", err)
+		}
+		w.patchFiles = append(w.patchFiles, &PatchFile{
+			Name:        name,
+			Path:        file,
+			RelatedPath: rel,
+		})
+	}
+
+	return nil
+}
+
 func (w *WorkingContext) build(buildCommand string, logFile string) error {
 	cmd := exec.Command(buildCommand)
 	cmd.Stdin = os.Stdin
@@ -454,9 +496,7 @@ func (w *WorkingContext) absPathToUrl(filepath string) string {
 	if w.source == nil {
 		return filepath
 	}
-	prefix := strings.TrimSuffix(w.sourceUrl, "/")
-	directorySuffix := "/" + w.source.Directory
-	prefix = prefix[:len(prefix)-len(directorySuffix)]
+	prefix := strings.TrimSuffix(strings.TrimSuffix(w.sourceUrl, "/"+w.source.Directory), "/")
 	return prefix + "/" + filepath
 }
 
@@ -627,6 +667,17 @@ func (w *WorkingContext) buildReport() string {
 			report += "- [ ] It is prebuilt, but not built as a Dockerfile.\n"
 			report += "- hash : " + item.Hash + "\n"
 			report += "\n"
+		}
+	}
+
+	report += "## Patch Files\n"
+
+	if len(w.patchFiles) == 0 {
+		report += "- No Patch Files\n"
+	} else {
+		report += ":robot: Human, “Why patches are being applied?” Please check."
+		for _, patch := range w.patchFiles {
+			report += fmt.Sprintf("- [%s](%s)\n", patch.Name, w.absPathToUrl(patch.RelatedPath))
 		}
 	}
 
