@@ -605,7 +605,7 @@ func (w *WorkingContext) buildReport() string {
 				report += "- [X] ExtKeyUsage/CodeSigning : OK\n"
 			} else {
 				success = false
-				report += "- [ ] ExtKeyUsage/CodeSigning : **NO DigitalSignature in Key Usage!!!**\n"
+				report += "- [ ] ExtKeyUsage/CodeSigning : **NO CodeSigning in Ext Key Usage!!!**\n"
 			}
 		}
 		report += "\n"
