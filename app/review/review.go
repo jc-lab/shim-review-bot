@@ -83,7 +83,7 @@ type WorkingContext struct {
 
 	outputState   outputState
 	hashes        []*HashSum
-	exportedFiles []*FileAndHash
+	exportedFiles map[string]*FileAndHash
 
 	efiFiles []*EfiFile
 
@@ -92,6 +92,10 @@ type WorkingContext struct {
 	buildErr error
 	otherErr error
 }
+
+var (
+	shimEfiPathPattern = regexp.MustCompile("/shim[^.]+\\.efi$")
+)
 
 func Main(flagSet *flag.FlagSet, args []string) {
 	var configFile string
@@ -453,6 +457,8 @@ func (w *WorkingContext) handleOutput(r io.Reader) {
 }
 
 func (w *WorkingContext) extractFiles(tarFile string, outputDirectory string) error {
+	w.exportedFiles = map[string]*FileAndHash{}
+
 	file, err := os.Open(tarFile)
 	if err != nil {
 		return err
@@ -471,34 +477,62 @@ func (w *WorkingContext) extractFiles(tarFile string, outputDirectory string) er
 			break
 		}
 
-		var hashEntry *HashSum
-		for _, s := range w.hashes {
-			if s.Path[1:] == header.Name {
-				hashEntry = s
+		baseName := filepath.Base(header.Name)
+		destFileName := filepath.Join(outputDirectory, baseName)
+
+		if len(w.hashes) > 0 {
+			// If there is a hash in the build log
+
+			var hashEntry *HashSum
+			for _, s := range w.hashes {
+				if s.Path[1:] == header.Name {
+					hashEntry = s
+				}
+			}
+
+			if hashEntry != nil {
+				f, err := os.OpenFile(destFileName, os.O_CREATE|os.O_RDWR, 0644)
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+				if _, err = io.Copy(f, reader); err != nil {
+					return err
+				}
+
+				w.exportedFiles[baseName] = &FileAndHash{
+					Path:        destFileName,
+					Name:        baseName,
+					RelatedPath: hashEntry.Path,
+					Hash:        hashEntry.Hash,
+				}
+				continue
+			}
+		} else {
+			// Find shim*.efi files by pattern.
+			if shimEfiPathPattern.MatchString(header.Name) {
+				log.Printf("found shim*.efi in '%s'", header.Name)
+				f, err := os.OpenFile(destFileName, os.O_CREATE|os.O_RDWR, 0644)
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+				if _, err = io.Copy(f, reader); err != nil {
+					return err
+				}
+
+				w.exportedFiles[baseName] = &FileAndHash{
+					Path:        destFileName,
+					Name:        filepath.Base(header.Name),
+					RelatedPath: header.Name,
+					Hash:        "",
+				}
+				continue
 			}
 		}
 
-		if hashEntry != nil {
-			destFileName := filepath.Join(outputDirectory, filepath.Base(header.Name))
-			f, err := os.OpenFile(destFileName, os.O_CREATE|os.O_RDWR, 0644)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-			if _, err = io.Copy(f, reader); err != nil {
-				return err
-			}
-
-			w.exportedFiles = append(w.exportedFiles, &FileAndHash{
-				Path:        destFileName,
-				Name:        filepath.Base(header.Name),
-				RelatedPath: hashEntry.Path,
-				Hash:        hashEntry.Hash,
-			})
-		} else {
-			if _, err = io.Copy(&DummyWriter{}, reader); err != nil {
-				return err
-			}
+		if _, err = io.Copy(&DummyWriter{}, reader); err != nil {
+			return err
 		}
 	}
 
@@ -608,6 +642,7 @@ func (w *WorkingContext) buildReport() string {
 			report += fmt.Sprintf("## EFI FILE: %s\n\n", filepath.Base(file.Path))
 
 			report += "- reproduced file: " + file.RelatedPath + "\n"
+			report += fmt.Sprintf("- computed hash (sha256) : %s\n", file.ComputedHash)
 
 			if found {
 				report += "- prebuilt file: " + w.absPathToUrl(prebuilt.RelatedPath) + "\n"
@@ -626,12 +661,13 @@ func (w *WorkingContext) buildReport() string {
 				report += "- Not Found in prebuilt file!!!\n"
 			}
 
-			if file.Hash == file.ComputedHash {
-				report += fmt.Sprintf("- hash (sha256) : %s\n", file.Hash)
-			} else {
-				success = false
-				report += fmt.Sprintf("- hash : %s (INCORRECT)\n", file.Hash)
-				report += fmt.Sprintf("- computed hash (sha256) : %s\n", file.ComputedHash)
+			if file.Hash != "" {
+				if file.Hash == file.ComputedHash {
+					report += fmt.Sprintf("- hash (sha256) : %s\n", file.Hash)
+				} else {
+					success = false
+					report += fmt.Sprintf("- hash : %s (INCORRECT)\n", file.Hash)
+				}
 			}
 			if file.Sbat == w.sbatContent {
 				report += "- [X] sbat : SAME\n"
