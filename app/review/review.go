@@ -622,7 +622,7 @@ func (w *WorkingContext) buildReport() string {
 		records, err := sbatReader.ReadAll()
 		_ = records
 		if err == nil {
-			report += "- [X] CSV Format Check : OK (Caution: Check only csv format, not sbatContent format)\n"
+			report += "- [X] CSV Format Check : OK (Caution: Check only csv format, not .sbat format)\n"
 		} else {
 			success = false
 			report += "- [ ] CSV Format Check : **FAILED**: " + err.Error() + "\n"
